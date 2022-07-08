@@ -5,7 +5,10 @@
 </p>
 
 <p align=center>
-<a href="https://slack.jina.ai"><img src="https://img.shields.io/badge/Slack-2.8k-blueviolet?logo=slack&amp;logoColor=white&style=flat-square" alt="Open in Google Colab"></a> <a href="https://colab.research.google.com/github/jina-ai/dalle-flow/blob/main/client.ipynb"><img src="https://img.shields.io/badge/Open-in%20Colab-orange?logo=google-colab&style=flat-square" alt="Open in Google Colab"/></a>
+<a href="https://slack.jina.ai"><img src="https://img.shields.io/badge/Slack-3.1k-blueviolet?logo=slack&amp;logoColor=white&style=flat-square"></a>
+<a href="https://colab.research.google.com/github/jina-ai/dalle-flow/blob/main/client.ipynb"><img src="https://img.shields.io/badge/Open-in%20Colab-brightgreen?logo=google-colab&style=flat-square" alt="Open in Google Colab"/></a>
+<a href="https://hub.docker.com/r/jinaai/dalle-flow"><img alt="Docker Image Size (latest by date)" src="https://img.shields.io/docker/image-size/jinaai/dalle-flow?logo=docker&logoColor=white&style=flat-square"></a>
+
 </p>
 
 
@@ -17,8 +20,19 @@ DALL·E Flow is built with [Jina](https://github.com/jina-ai/jina) in a client-s
 
 **Why Human-in-the-Loop?** Generative art is a creative process. While recent advances of DALL·E unleash people's creativity, having a single-prompt-single-output UX/UI locks the imagination to a _single_ possibility, which is bad no matter how fine this single result is. DALL·E Flow is an alternative to the one-liner, by formalizing the generative art as an iterative procedure.
 
+## Usage
+
+DALL·E Flow is in client-server architecture.
+- [Client usage](#Client)
+- [Server usage, i.e. deploy your own server](#Server)
+
+
 ## Updates
 
+- ⚠️ **2022/7/6** Demo server migration to AWS EKS for better availability and robustness, **server URL is now changing to `grpcs://dalle-flow.dev.jina.ai`**. All connections are now with TLS encryption, [please _reopen_ the notebook in Google Colab](https://colab.research.google.com/github/jina-ai/dalle-flow/blob/main/client.ipynb).
+- ⚠️ **2022/6/25** Unexpected downtime between 6/25 0:00 - 12:00 CET due to out of GPU quotas. The new server now has 2 GPUs, add healthcheck in client notebook.
+- **2022/6/3** Reduce default number of images to 2 per pathway, 4 for diffusion.
+- 🐳 **2022/6/21** [A prebuilt image is now available on Docker Hub!](https://hub.docker.com/r/jinaai/dalle-flow) This image can be run out-of-the-box on CUDA 11.6. Fix an upstream bug in CLIP-as-service. 
 - ⚠️ **2022/5/23** Fix an upstream bug in CLIP-as-service. This bug makes the 2nd diffusion step irrelevant to the given texts. New Dockerfile proved to be reproducible on a AWS EC2 `p2.x8large` instance.
 - **2022/5/13b** Removing TLS as Cloudflare gives 100s timeout, making DALLE Flow in usable [Please _reopen_ the notebook in Google Colab!](https://colab.research.google.com/github/jina-ai/dalle-flow/blob/main/client.ipynb).
 - 🔐 **2022/5/13** New Mega checkpoint! All connections are now with TLS, [Please _reopen_ the notebook in Google Colab!](https://colab.research.google.com/github/jina-ai/dalle-flow/blob/main/client.ipynb).
@@ -142,7 +156,16 @@ You can host your own server by following the instruction below.
 
 ### Hardware requirements
 
-DALL·E Flow needs one GPU with 21GB memory at its peak. All services are squeezed into this one GPU.
+DALL·E Flow needs one GPU with 21GB VRAM at its peak. All services are squeezed into this one GPU, this includes (roughly)
+- DALLE ~9GB
+- GLID Diffusion ~6GB
+- SwinIR ~3GB
+- CLIP ViT-L/14-336px ~3GB
+
+The following reasonable tricks can be used for further reducing VRAM:
+- SwinIR can be moved to CPU (-3GB)
+- CLIP can be delegated to [CLIP-as-service demo server](https://github.com/jina-ai/clip-as-service#text--image-embedding) (-3GB)
+
 
 It requires at least 40GB free space on the hard drive, mostly for downloading pretrained models.
 
@@ -160,10 +183,21 @@ CPU-only environment is not tested and likely won't work. Google Colab is likely
 If you have installed Jina, the above flowchart can be generated via:
 
 ```bash
-python -c "from jina import Flow; Flow.load_config('flow.yml').plot('flow.svg')"
+# pip install jina
+jina export flowchart flow.yml flow.svg
 ```
 
 ### Run in Docker
+
+#### Prebuilt image
+
+We have provided [a prebuilt Docker image](https://hub.docker.com/r/jinaai/dalle-flow) that can be pull directly.
+
+```bash
+docker pull jinaai/dalle-flow:latest
+```
+
+#### Build it yourself
 
 We have provided [a Dockerfile](https://github.com/jina-ai/dalle-flow/blob/main/Dockerfile) which allows you to run a server out of the box.
 
@@ -173,15 +207,17 @@ Our Dockerfile is using CUDA 11.6 as the base image, you may want to adjust it a
 git clone https://github.com/jina-ai/dalle-flow.git
 cd dalle-flow
 
-docker build -t jinaai/dalle-flow .
+docker build --build-arg GROUP_ID=$(id -g ${USER}) --build-arg USER_ID=$(id -u ${USER}) -t jinaai/dalle-flow .
 ```
 
-The building will take 10 minutes with average internet speed, which results in a 10GB Docker image.
+The building will take 10 minutes with average internet speed, which results in a 18GB Docker image.
+
+#### Run container
 
 To run it, simply do:
 
 ```bash
-docker run -p 51005:51005 -v $HOME/.cache:/root/.cache --gpus all jinaai/dalle-flow
+docker run -p 51005:51005 -v $HOME/.cache:/home/dalle/.cache --gpus all jinaai/dalle-flow
 ```
 
 - The first run will take ~10 minutes with average internet speed.
@@ -243,6 +279,7 @@ cd -
 ```bash
 cd dalle-flow
 pip install -r requirements.txt
+pip install jax==0.3.13
 ```
 
 ### Start the server

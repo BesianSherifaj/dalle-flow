@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.6.0-devel-ubuntu20.04
+FROM nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04
 
 # given by builder
 ARG PIP_TAG
@@ -8,7 +8,6 @@ ARG APT_PACKAGES="git wget"
 WORKDIR /dalle
 
 ADD requirements.txt dalle-flow/
-COPY executors dalle-flow/executors
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -20,14 +19,12 @@ RUN apt-get update \
     && pip install --upgrade pip \
     && pip install wheel setuptools
 
-RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/libcudnn8_8.4.0.27-1+cuda11.6_amd64.deb \
-    && apt install ./libcudnn8_8.4.0.27-1+cuda11.6_amd64.deb
 
 RUN if [ -n "${APT_PACKAGES}" ]; then apt-get update && apt-get install --no-install-recommends -y ${APT_PACKAGES}; fi && \
     git clone --depth=1 https://github.com/JingyunLiang/SwinIR.git  && \
     git clone --depth=1 https://github.com/CompVis/latent-diffusion.git && \
     git clone --depth=1 https://github.com/hanxiao/glid-3-xl.git && \
-    pip install "jax[cuda11_cudnn82]" -f https://storage.googleapis.com/jax-releases/jax_releases.html && \
+    pip install jax[cuda11_cudnn82]==0.3.13 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html && \
     pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113 && \
     cd latent-diffusion && pip install --timeout=1000 -e . && cd - && \
     cd glid-3-xl && pip install --timeout=1000 -e . && cd - && \
@@ -39,8 +36,23 @@ RUN if [ -n "${APT_PACKAGES}" ]; then apt-get update && apt-get install --no-ins
     # now remove apt packages
     if [ -n "${APT_PACKAGES}" ]; then apt-get remove -y --auto-remove ${APT_PACKAGES} && apt-get autoremove && apt-get clean && rm -rf /var/lib/apt/lists/*; fi
 
+COPY executors dalle-flow/executors
 ADD flow.yml dalle-flow/
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
+
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
+ARG USER_NAME=dalle
+ARG GROUP_NAME=dalle
+
+RUN groupadd -g ${GROUP_ID} ${USER_NAME} &&\
+    useradd -l -u ${USER_ID} -g ${USER_NAME} ${GROUP_NAME} &&\
+    mkdir /home/${USER_NAME} &&\
+    chown ${USER_NAME}:${GROUP_NAME} /home/${USER_NAME} &&\
+    chown -R ${USER_NAME}:${GROUP_NAME} /dalle/
+
+USER ${USER_NAME}
 
 WORKDIR /dalle/dalle-flow
 
